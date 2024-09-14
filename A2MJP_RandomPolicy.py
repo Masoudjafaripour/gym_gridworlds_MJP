@@ -26,8 +26,8 @@ for s in range(n_states):
             P[s, a, s_next] = 1.0
         T[s, a] = terminated
 
-def bellman_v(policy, gamma, max_iterations=1000, tol=1e-7):
-    V = np.zeros(n_states)
+def bellman_v(policy, gamma, init_value, max_iterations=10000, tol=1e-7):
+    V = np.full(n_states, init_value)  # Initialize V with init_value
     bellman_errors = []
     for _ in range(max_iterations):
         V_prev = V.copy()
@@ -40,9 +40,9 @@ def bellman_v(policy, gamma, max_iterations=1000, tol=1e-7):
             break
     return V, bellman_errors
 
-def bellman_q(policy, gamma, max_iterations=1000, tol=1e-7):
-    Q = np.zeros((n_states, n_actions))
-    V = np.zeros(n_states)
+def bellman_q(gamma, init_value, max_iterations=1000, tol=1e-7):
+    Q = np.full((n_states, n_actions), init_value)  # Initialize Q with init_value
+    V = np.full(n_states, init_value)  # Initialize V with init_value
     for _ in range(max_iterations):
         V_prev = V.copy()
         for s in range(n_states):
@@ -62,7 +62,7 @@ for init_value in [-10, 0, 10]:
         # Uniform random policy where each state maps to a random action
         policy = np.random.randint(0, n_actions, size=n_states)
         
-        V, bellman_errors_v = bellman_v(policy, gamma)
+        V, bellman_errors_v = bellman_v(policy, gamma, init_value)
         
         # Reshape V for visualization
         V_reshaped = V.reshape((3, 3))
@@ -86,7 +86,7 @@ for init_value in [-10, 0, 10]:
         # Uniform random policy where each state maps to a random action
         policy = np.random.randint(0, n_actions, size=n_states)
         
-        Q = bellman_q(policy, gamma)
+        Q = bellman_q(policy, gamma, init_value)
         
         # Plot Q-values for each action
         for a in range(n_actions):

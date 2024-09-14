@@ -36,8 +36,8 @@ optimal_policy[8] = 3  # Move UP from state 8 to 5
 optimal_policy[5] = 3  # Move UP from state 5 to 2
 optimal_policy[2] = 4  # STAY at state 2
 
-def bellman_v(policy, gamma, max_iterations=10000, tol=1e-7):
-    V = np.zeros(n_states)
+def bellman_v(policy, gamma, init_value, max_iterations=10000, tol=1e-7):
+    V = np.full(n_states, init_value)  # Initialize V with init_value
     bellman_errors = []
     for _ in range(max_iterations):
         V_prev = V.copy()
@@ -50,9 +50,9 @@ def bellman_v(policy, gamma, max_iterations=10000, tol=1e-7):
             break
     return V, bellman_errors
 
-def bellman_q(gamma, max_iterations=10000, tol=1e-7):
-    Q = np.zeros((n_states, n_actions))
-    V = np.zeros(n_states)
+def bellman_q(gamma, init_value, max_iterations=1000, tol=1e-7):
+    Q = np.full((n_states, n_actions), init_value)  # Initialize Q with init_value
+    V = np.full(n_states, init_value)  # Initialize V with init_value
     for _ in range(max_iterations):
         V_prev = V.copy()
         for s in range(n_states):
@@ -69,7 +69,7 @@ for init_value in [-10, 0, 10]:
     fig, axs = plt.subplots(2, len(gammas), figsize=(12, 8))
     fig.suptitle(f'Value Function ($V$) - Initial Value: {init_value}', fontsize=16)
     for i, gamma in enumerate(gammas):
-        V, bellman_errors_v = bellman_v(optimal_policy, gamma)
+        V, bellman_errors_v = bellman_v(optimal_policy, gamma, init_value)
         
         # Reshape V for visualization
         V_reshaped = V.reshape((3, 3))
@@ -91,7 +91,7 @@ for init_value in [-10, 0, 10]:
     fig, axs = plt.subplots(n_actions, len(gammas), figsize=(12, 15))
     fig.suptitle(f'Action-Value Function ($Q$) - Initial Value: {init_value}', fontsize=16)
     for i, gamma in enumerate(gammas):
-        Q = bellman_q(gamma)
+        Q = bellman_q(gamma, init_value)
         
         # Plot Q-values for each action
         for a in range(n_actions):
