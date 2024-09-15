@@ -29,14 +29,15 @@ for s in range(n_states):
 # RL Methods
 
 # Policy Evaluation
-def policy_evaluation(policy, gamma, init_value, max_iterations=10000, tol=1e-7):
+def policy_evaluation(policy, gamma, init_value, max_iterations=1000, tol=1e-4):
     Q = np.full((n_states, n_actions), init_value)
     bellman_errors = []
     for _ in range(max_iterations):
         Q_prev = Q.copy()
         for s in range(n_states):
             a = policy[s]
-            Q[s, a] = np.sum(P[s, a, :] * (R[s, a] + gamma * np.max(Q, axis=1)))
+            # Q[s, a] = np.sum(P[s, a, :] * (R[s, a] + gamma * np.max(Q, axis=1)))
+            Q[s, a] = np.sum(P[s, a, :] * (R[s, a] + gamma * Q[:, a]))
         error = np.max(np.abs(Q - Q_prev))
         bellman_errors.append(error)
         if error < tol:
@@ -49,7 +50,7 @@ def policy_improvement(Q, gamma):
     for s in range(n_states):
         action_values = np.zeros(n_actions)
         for a in range(n_actions):
-            action_values[a] = np.sum(P[s, a, :] * (R[s, a] + gamma * np.max(Q, axis=1)))
+            action_values[a] = np.sum(P[s, a, :] * (R[s, a] + gamma *  Q[:, a]))
         policy[s] = np.argmax(action_values)
     return policy
 
@@ -65,14 +66,14 @@ def policy_iteration(gamma, init_value, max_policy_evaluations=1000):
         total_policy_evaluations += len(bellman_errors)
         
         new_policy = policy_improvement(Q, gamma)
-        if np.all(policy == new_policy):
+        if np.allclose(policy, new_policy):
             break
         policy = new_policy
 
     return policy, total_policy_evaluations, all_bellman_errors
 
 # Generalized Policy Iteration
-def generalized_policy_iteration(gamma, init_value, max_iterations=10000, eval_steps=5):
+def generalized_policy_iteration(gamma, init_value, max_iterations=1000, eval_steps=5):
     # policy = np.random.randint(0, n_actions, size=n_states)
     policy = np.random.choice(n_actions, size=n_states, p=[1/n_actions]*n_actions)
 
@@ -85,19 +86,19 @@ def generalized_policy_iteration(gamma, init_value, max_iterations=10000, eval_s
             Q_prev, bellman_errors = policy_evaluation(policy, gamma, init_value)
             all_bellman_errors.extend(bellman_errors)
             total_policy_evaluations += len(bellman_errors)
-            if np.max(np.abs(Q - Q_prev)) < 1e-7:
+            if np.max(np.abs(Q - Q_prev)) < 1e-5:
                 break
             Q = Q_prev
 
         new_policy = policy_improvement(Q, gamma)
-        if np.all(policy == new_policy):
+        if np.allclose(policy, new_policy):
             break
         policy = new_policy
 
     return policy, total_policy_evaluations, all_bellman_errors
 
 # Value Iteration
-def value_iteration(gamma, init_value, max_iterations=10000):
+def value_iteration(gamma, init_value, max_iterations=1000):
     Q = np.full((n_states, n_actions), init_value)
     all_bellman_errors = []
 
@@ -105,21 +106,16 @@ def value_iteration(gamma, init_value, max_iterations=10000):
         Q_prev = Q.copy()
         for s in range(n_states):
             for a in range(n_actions):
-                Q[s, a] = np.sum(P[s, a, :] * (R[s, a] + gamma * np.max(Q, axis=1)))
+                # Q[s, a] = np.sum(P[s, a, :] * (R[s, a] + gamma * np.max(Q, axis=1)))
+                Q[s, a] = np.sum(P[s, a, :] * (R[s, a] + gamma * Q[:, a]))
         V = np.max(Q, axis=1)
         error = np.max(np.abs(Q - Q_prev))
         all_bellman_errors.append(error)
-        if error < 1e-7:
+        if error < 1e-5:
             break
 
     policy = policy_improvement(Q, gamma)
     return policy, len(all_bellman_errors), all_bellman_errors
-
-# # Initialize plot
-# fig, axs = plt.subplots(3, 7, figsize=(20, 12))
-# tot_iter_table = np.zeros((3, 7))
-# bellman_error_trends = {'VI': [], 'PI': [], 'GPI': []}
-# algorithms = {'VI': value_iteration, 'PI': policy_iteration, 'GPI': generalized_policy_iteration}
 
 # Define the optimal policy (based on your description)
 pi_opt = np.zeros(n_states, dtype=int)
