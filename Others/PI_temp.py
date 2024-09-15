@@ -26,7 +26,7 @@ for s in range(n_states):
             P[s, a, s_next] = 1.0
         T[s, a] = terminated
 
-# Define the optimal policy
+# Define the optimal policy (based on your description)
 optimal_policy = np.zeros(n_states, dtype=int)
 optimal_policy[0] = 1  # Move DOWN from state 0 to 3
 optimal_policy[3] = 1  # Move DOWN from state 3 to 6
@@ -35,6 +35,8 @@ optimal_policy[7] = 2  # Move RIGHT from state 7 to 8
 optimal_policy[8] = 3  # Move UP from state 8 to 5
 optimal_policy[5] = 3  # Move UP from state 5 to 2
 optimal_policy[2] = 4  # STAY at state 2
+optimal_policy[1] = 2  # Move RIGHT
+optimal_policy[4] = 2  # Move RIGHT
 
 def bellman_v(policy, gamma, init_value, max_iterations=10000, tol=1e-7):
     V = np.full(n_states, init_value)  # Initialize V with init_value
