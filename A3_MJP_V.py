@@ -27,7 +27,6 @@ for s in range(n_states):
         T[s, a] = terminated
 
 # RL Methods
-
 # Policy Iteration using iterative policy evaluation
 def policy_evaluation(policy, gamma, init_value, max_iterations=10000, tol=1e-7):
     V = np.full(n_states, init_value)
