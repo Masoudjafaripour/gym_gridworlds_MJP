@@ -72,8 +72,10 @@ def policy_iteration(gamma, init_value, max_policy_evaluations=1000):
     return policy, total_policy_evaluations, all_bellman_errors
 
 # Generalized Policy Iteration
-def generalized_policy_iteration(gamma, init_value, max_iterations=1000, eval_steps=5):
-    policy = np.random.randint(0, n_actions, size=n_states)
+def generalized_policy_iteration(gamma, init_value, max_iterations=10000, eval_steps=5):
+    # policy = np.random.randint(0, n_actions, size=n_states)
+    policy = np.random.choice(n_actions, size=n_states, p=[1/n_actions]*n_actions)
+
     Q = np.full((n_states, n_actions), init_value)
     total_policy_evaluations = 0
     all_bellman_errors = []
@@ -95,7 +97,7 @@ def generalized_policy_iteration(gamma, init_value, max_iterations=1000, eval_st
     return policy, total_policy_evaluations, all_bellman_errors
 
 # Value Iteration
-def value_iteration(gamma, init_value, max_iterations=1000):
+def value_iteration(gamma, init_value, max_iterations=10000):
     Q = np.full((n_states, n_actions), init_value)
     all_bellman_errors = []
 
@@ -113,11 +115,11 @@ def value_iteration(gamma, init_value, max_iterations=1000):
     policy = policy_improvement(Q, gamma)
     return policy, len(all_bellman_errors), all_bellman_errors
 
-# Initialize plot
-fig, axs = plt.subplots(3, 7, figsize=(20, 12))
-tot_iter_table = np.zeros((3, 7))
-bellman_error_trends = {'VI': [], 'PI': [], 'GPI': []}
-algorithms = {'VI': value_iteration, 'PI': policy_iteration, 'GPI': generalized_policy_iteration}
+# # Initialize plot
+# fig, axs = plt.subplots(3, 7, figsize=(20, 12))
+# tot_iter_table = np.zeros((3, 7))
+# bellman_error_trends = {'VI': [], 'PI': [], 'GPI': []}
+# algorithms = {'VI': value_iteration, 'PI': policy_iteration, 'GPI': generalized_policy_iteration}
 
 # Define the optimal policy (based on your description)
 pi_opt = np.zeros(n_states, dtype=int)
@@ -131,6 +133,14 @@ pi_opt[2] = 4  # STAY at state 2
 pi_opt[1] = 2  # Move RIGHT from state 1 to 2
 pi_opt[4] = 2  # Move RIGHT from state 4 to 5
 
+# Initialize plot
+fig, axs = plt.subplots(3, 7, figsize=(20, 12))
+fig.suptitle('Bellman Error', fontsize=16, y=1.02)  # Overall title
+tot_iter_table = np.zeros((3, 7))
+bellman_error_trends = {'VI': [], 'PI': [], 'GPI': []}
+algorithms = {'VI': value_iteration, 'PI': policy_iteration, 'GPI': generalized_policy_iteration}
+
+
 for i, init_value in enumerate([-100, -10, -5, 0, 5, 10, 100]):
     for algo_name, algo_func in algorithms.items():
         policy, tot_iter, bellman_errors = algo_func(gamma=0.99, init_value=init_value)
@@ -143,12 +153,20 @@ for i, init_value in enumerate([-100, -10, -5, 0, 5, 10, 100]):
             print("\n", "Learned Policy = ", policy, "\n", "Optimal Policy = ", pi_opt)
 
         # Plot Bellman Error Trend
-        axs[{'VI': 0, 'PI': 1, 'GPI': 2}[algo_name]][i].plot(bellman_errors, marker='o')
-        axs[{'VI': 0, 'PI': 1, 'GPI': 2}[algo_name]][i].set_title(f'Init: {init_value}')
-        axs[{'VI': 0, 'PI': 1, 'GPI': 2}[algo_name]][i].set_xlabel('Policy Evaluation Iteration')
-        axs[{'VI': 0, 'PI': 1, 'GPI': 2}[algo_name]][i].set_ylabel('Bellman Error')
+        row = {'VI': 0, 'PI': 1, 'GPI': 2}[algo_name]
+        title = f'Q_0: {init_value}' if row == 0 else ''  # Only add Q_0 title in the first row
+        axs[row, i].plot(bellman_errors, marker='o')
+        axs[row, i].set_title(title, fontsize=10)
+        axs[row, i].set_xlabel('Policy Evaluation Iteration')
+        axs[row, i].set_ylabel('Bellman Error')
 
-plt.tight_layout()
+# Add labels for each row
+for i, algo_name in enumerate(['VI', 'PI', 'GPI']):
+    axs[i, 0].set_ylabel(algo_name)
+    axs[i, 0].yaxis.set_label_position('left')
+    axs[i, 0].yaxis.label.set_color('black')
+
+plt.tight_layout(rect=[0.02, 0.02, 0.98, 0.96])  # Adjust layout to fit suptitle
 plt.show()
 
 # Report results

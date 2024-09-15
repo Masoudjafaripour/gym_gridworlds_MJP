@@ -10,8 +10,8 @@ n_states = env.observation_space.n
 n_actions = env.action_space.n
 
 # Add an extra state to represent the terminal state
-R = np.zeros((n_states + 1, n_actions))
-P = np.zeros((n_states + 1, n_actions, n_states + 1))
+R = np.zeros((n_states, n_actions))
+P = np.zeros((n_states, n_actions, n_states))
 T = np.zeros((n_states, n_actions))  # No need to include terminal state in T
 
 # Populate R, P, and T matrices
@@ -22,23 +22,25 @@ for s in range(n_states):
         s_next, r, terminated, _, _ = env.step(a)
         R[s, a] = r
         if terminated:
-            P[s, a, n_states] = 1.0  # Transition to the terminal state
+            P[s, a, s] = 1.0  # Transition to itself in case of terminal state
         else:
             P[s, a, s_next] = 1.0
         T[s, a] = terminated  # Mark if the transition is terminal
 
-# Define the optimal policy
-optimal_policy = np.zeros(n_states, dtype=int)
-optimal_policy[0] = 1  # Move DOWN from state 0 to 3
-optimal_policy[3] = 1  # Move DOWN from state 3 to 6
-optimal_policy[6] = 2  # Move RIGHT from state 6 to 7
-optimal_policy[7] = 2  # Move RIGHT from state 7 to 8
-optimal_policy[8] = 3  # Move UP from state 8 to 5
-optimal_policy[5] = 3  # Move UP from state 5 to 2
-optimal_policy[2] = 4  # STAY at state 2
+# Define the optimal policy (based on your description)
+pi_opt = np.zeros(n_states, dtype=int)
+pi_opt[0] = 1  # Move DOWN from state 0 to 3
+pi_opt[3] = 1  # Move DOWN from state 3 to 6
+pi_opt[6] = 2  # Move RIGHT from state 6 to 7
+pi_opt[7] = 2  # Move RIGHT from state 7 to 8
+pi_opt[8] = 3  # Move UP from state 8 to 5
+pi_opt[5] = 3  # Move UP from state 5 to 2
+pi_opt[2] = 4  # STAY at state 2
+pi_opt[1] = 2  # Move RIGHT from state 1 to 2
+pi_opt[4] = 2  # Move RIGHT from state 4 to 5
 
-def policy_evaluation(policy, gamma, init_value, max_iterations=10000, tol=1e-7):
-    V = np.full(n_states + 1, init_value)
+def policy_evaluation(policy, gamma, init_value, max_iterations=1000, tol=1e-4):
+    V = np.full(n_states, init_value)
     bellman_errors = []
     
     for _ in range(max_iterations):
@@ -50,13 +52,13 @@ def policy_evaluation(policy, gamma, init_value, max_iterations=10000, tol=1e-7)
                 continue
             V[s] = np.sum(P[s, a, :] * (R[s, a] + gamma * V))
         
-        error = np.max(np.abs(V[:n_states] - V_prev[:n_states]))
+        error = np.max(np.abs(V - V_prev))
         bellman_errors.append(error)
         
         if error < tol:
             break
     
-    return V[:n_states], bellman_errors
+    return V, bellman_errors
 
 def policy_improvement(V, gamma):
     policy = np.zeros(n_states, dtype=int)
@@ -66,7 +68,7 @@ def policy_improvement(V, gamma):
             if T[s, a] == 1:
                 action_values[a] = R[s, a]  # Direct reward if it's terminal
             else:
-                action_values[a] = np.sum(P[s, a, :] * (R[s, a] + gamma * np.concatenate([V, [0]])))
+                action_values[a] = np.sum(P[s, a, :] * (R[s, a] + gamma * V))
         policy[s] = np.argmax(action_values)
     return policy
 
@@ -84,12 +86,16 @@ def policy_iteration(gamma, init_value, max_policy_evaluations=1000):
         if np.all(policy == new_policy):
             break
         policy = new_policy
+        
+        # Check if the max_policy_evaluations limit is reached
+        if total_policy_evaluations >= max_policy_evaluations:
+            break
 
     return policy, total_policy_evaluations, all_bellman_errors
 
 def generalized_policy_iteration(gamma, init_value, max_iterations=1000, eval_steps=5):
     policy = np.random.randint(0, n_actions, size=n_states)
-    V = np.full(n_states + 1, init_value)
+    V = np.full(n_states, init_value)
     total_policy_evaluations = 0
     all_bellman_errors = []
 
@@ -110,7 +116,7 @@ def generalized_policy_iteration(gamma, init_value, max_iterations=1000, eval_st
     return policy, total_policy_evaluations, all_bellman_errors
 
 def value_iteration(gamma, init_value, max_iterations=1000):
-    V = np.full(n_states + 1, init_value)
+    V = np.full(n_states, init_value)
     all_bellman_errors = []
 
     for _ in range(max_iterations):
@@ -121,10 +127,10 @@ def value_iteration(gamma, init_value, max_iterations=1000):
                 if T[s, a] == 1:
                     action_values[a] = R[s, a]  # Direct reward if it's terminal
                 else:
-                    action_values[a] = np.sum(P[s, a, :] * (R[s, a] + gamma * np.concatenate([V, [0]])))
+                    action_values[a] = np.sum(P[s, a, :] * (R[s, a] + gamma * V))
             V[s] = np.max(action_values)
         
-        error = np.max(np.abs(V[:n_states] - V_prev[:n_states]))
+        error = np.max(np.abs(V - V_prev))
         all_bellman_errors.append(error)
         if error < 1e-7:
             break
@@ -141,7 +147,13 @@ algorithms = {'VI': value_iteration, 'PI': policy_iteration, 'GPI': generalized_
 # Run algorithms
 for i, init_value in enumerate([-100, -10, -5, 0, 5, 10, 100]):
     for algo_name, algo_func in algorithms.items():
-        policy, tot_iter, bellman_errors = algo_func(gamma=0.99, init_value=init_value)
+        if algo_name == 'PI':
+            policy, tot_iter, bellman_errors = algo_func(gamma=0.99, init_value=init_value, max_policy_evaluations=1000)
+        elif algo_name == 'GPI':
+            policy, tot_iter, bellman_errors = algo_func(gamma=0.99, init_value=init_value, max_iterations=1000, eval_steps=5)
+        else:
+            policy, tot_iter, bellman_errors = algo_func(gamma=0.99, init_value=init_value)
+        
         tot_iter_table[{'VI': 0, 'PI': 1, 'GPI': 2}[algo_name], i] = tot_iter
         # assert np.allclose(policy, optimal_policy)
 
