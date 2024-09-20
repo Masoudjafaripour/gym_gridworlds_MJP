@@ -1,6 +1,8 @@
 import gymnasium
 import numpy as np
 import matplotlib.pyplot as plt
+from collections import defaultdict
+
 
 np.set_printoptions(precision=3)
 
@@ -46,6 +48,7 @@ def eps_greedy_probs(Q, eps):
     for s in range(n_states):
         probs[s, best_actions[s]] += (1 - eps)
     return probs
+#------------------------------------------------------------------------------------------------------
 
 # Collect an episode following the current policy
 def episode(env, Q, eps, seed):
@@ -62,24 +65,34 @@ def episode(env, Q, eps, seed):
         data["r"].append(r)
         s = s_next
     return data
+#------------------------------------------------------------------------------------------------------
 
 # Compute the Bellman error for a given policy
 def compute_bellman_error(Q, pi, gamma):
     Q_true = bellman_q(pi, gamma)
     bellman_error = np.abs(Q - Q_true).sum()  # sum -->> Max absolute Bellman error
     return bellman_error
+#------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------------
 
 # Monte Carlo control with decaying epsilon
 def monte_carlo(env, Q, gamma, eps_decay, max_steps, episodes_per_iteration):
     total_steps = 0
     eps = 1.0
     bellman_errors = []
+
+    # Initialize Q-values arbitrarily and returns lists
+    Q = defaultdict(lambda: np.zeros(env.action_space.n))  # Action-value function
+    Returns = defaultdict(list)  # To track returns for state-action pairs
+
+    # Initialize uniform probability distribution
+    # epsilon_greedy_action_prob = np.ones(n_actions, dtype=float) * (epsilon / n_actions)
     
     while total_steps < max_steps:
         episodes_data = []
         for _ in range(episodes_per_iteration):
             # ?? Generate an episode following ⇡: S0, A0, R1, . . . , ST #1, AT #1, RT
-            episode_data = episode(env, Q, eps, seed=np.random.randint(1000))
+            episode_data = episode(env, Q, eps, seed=np.random.randint(1000)) #1000?
             episodes_data.append(episode_data)
             total_steps += len(episode_data["s"])  # count the steps in this episode
             
@@ -87,14 +100,36 @@ def monte_carlo(env, Q, gamma, eps_decay, max_steps, episodes_per_iteration):
             eps = max(eps - eps_decay * len(episode_data["s"]) / max_steps, 0.01)
         
         # Update Q-function after collecting all episodes 
-        for data in episodes_data:
-            returns = 0
-            QQ = []
-            for t in reversed(range(len(data["s"]))): # Loop for each step of episode, t = T .1, T .2, . . . , 0:
-                s, a, r = data["s"][t], data["a"][t], data["r"][t]
-                returns = r + gamma * returns
-                QQ.append(returns)
-                Q[s, a] += (returns - Q[s, a]) / (t + 1)  # every-visit MC update
+        # for data in episodes_data:
+        #     returns = 0
+        #     for t in reversed(range(len(data["s"]))): # Loop for each step of episode, t = T .1, T .2, . . . , 0:
+        #         s, a, r = data["s"][t], data["a"][t], data["r"][t]
+        #         returns = r + gamma * returns
+        #         Returns.append(returns)
+        #         Q[s, a] += (returns - Q[s, a]) / (t + 1)  # every-visit MC update
+        # Initialize return G
+        G = 0
+
+        # Loop over the episode backwards to compute returns
+        for t in range(len(episodes_data) - 1, -1, -1):
+            print(t)
+            data = episodes_data[t]
+            state, action, reward = data["s"][t], data["a"][t], data["r"][t] #episode_data[t]
+            G = gamma * G + reward  # Incremental return calculation
+            
+            # Update Q every time this state-action pair appears (every-visit)
+            Returns[(state, action)].append(G)
+            Q[state][action] = np.mean(Returns[(state, action)])  # Update Q with the mean return
+            
+            # Find the best action (A*) for this state
+            best_action = np.argmax(Q[state])
+
+            # # Update policy to be epsilon-soft
+            # for a in range(env.action_space.n):
+            #     if a == best_action:
+            #         epsilon_greedy_action_prob = 1 - epsilon + (epsilon / env.action_space.n)
+            #     else:
+            #         epsilon_greedy_action_prob = epsilon / env.action_space.n
         
         # Compute Bellman error after each batch of episodes
         pi = eps_greedy_probs(Q, eps)
@@ -107,6 +142,9 @@ def monte_carlo(env, Q, gamma, eps_decay, max_steps, episodes_per_iteration):
         bellman_errors.extend([bellman_errors[-1]] * (max_steps - len(bellman_errors)))
     
     return Q, np.array(bellman_errors[:max_steps])
+
+#------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------------
 
 # Error plot with confidence interval
 def error_shade_plot(ax, data, stepsize, **kwargs):
@@ -157,19 +195,19 @@ for ax, reward_noise_std in zip(axs, [0.0, 3.0]):  # Two subplots: one with rewa
     )
     
     # Run the experiment for all combinations of episodes per iteration and decay
-    for j, episodes in enumerate(episodes_per_iteration):
+    for j, episodes_p in enumerate(episodes_per_iteration):
         for k, decay in enumerate(decays):
             for seed in seeds:
                 np.random.seed(seed)
                 Q = np.zeros((n_states, n_actions)) + init_value
-                Q, bellman_error_trend = monte_carlo(env, Q, gamma, decay / 1, max_steps, episodes) #/max_steps
+                Q, bellman_error_trend = monte_carlo(env, Q, gamma, decay / 1, max_steps, episodes_p) #/max_steps
                 results[j, k, seed] = bellman_error_trend
             
             error_shade_plot(
                 ax,
                 results[j, k],
                 stepsize=1,
-                label=f"Episodes: {episodes}, Decay: {decay}",
+                label=f"Episodes: {episodes_p}, Decay: {decay}",
             )
             ax.legend()
             plt.draw()
