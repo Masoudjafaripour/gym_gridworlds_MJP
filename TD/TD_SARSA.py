@@ -117,10 +117,6 @@ def extract_optimal_policy_from_Q(Q):
 # Extract the optimal policy
 optimal_policy = extract_optimal_policy_from_Q(Q)
 
-# Print the optimal policy for each state
-# print("Optimal Policy (Best action for each state):")
-# print(optimal_policy)
-
 
 # Plotting convergence
 def plot_convergence(max_q_values):
