@@ -196,7 +196,9 @@ horizon = 10
 init_values = [-10, 0.0, 10]
 algs = ["QL", "SARSA", "Exp_SARSA"]
 
-seeds = np.arange(50)
+algs = ["QL"]
+
+seeds = np.arange(10)
 
 results_be = np.zeros((
     len(init_values),

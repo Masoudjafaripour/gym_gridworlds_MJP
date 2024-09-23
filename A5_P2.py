@@ -221,7 +221,7 @@ fig, axs = plt.subplots(1, 3)
 plt.ion()
 plt.show()
 
-reward_noise_std = 0.0  # re-run with 3.0
+reward_noise_std = 3.0  # re-run with 3.0
 
 for ax in axs:
     ax.set_prop_cycle(
