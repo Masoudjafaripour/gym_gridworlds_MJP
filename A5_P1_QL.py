@@ -68,6 +68,13 @@ def expected_return(env, Q, gamma, episodes=10):
             t += 1
     return G.mean()
 
+def tde():
+    pass
+
+def be():
+    pass
+
+
 def td(env, env_eval, Q, gamma, eps, alpha, max_steps, alg):
     be = []
     exp_ret = []
@@ -79,6 +86,27 @@ def td(env, env_eval, Q, gamma, eps, alpha, max_steps, alg):
     Q = np.zeros((n_states, n_actions))
 
     while True:
+        # Choose A from S using epsilon-greedy policy derived from Q
+        action = epsilon_greedy_policy(Q, state, n_actions, epsilon)
+
+        # Take action A, observe reward R and next state S'
+        next_state, reward, terminated, truncated, _ = env.step(action)
+        done = terminated or truncated
+
+        # Update Q(S, A) using Q-learning update rule:
+        best_next_action = np.argmax(Q[next_state])  # Greedy action at S'
+        Q[state, action] += alpha * (reward + gamma * Q[next_state, best_next_action] * (not done) - Q[state, action])
+
+        # Move to the next state
+        state = next_state
+
+        if done:
+            break
+
+        tot_steps +=1
+        
+        if tot_steps > max_steps:
+            break
         # TD learning with if ... else for the 3 algorithms 
         # log TD error at every timestep 
         # log B error only every 100 steps 

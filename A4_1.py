@@ -99,20 +99,12 @@ def monte_carlo(env, Q, gamma, eps_decay, max_steps, episodes_per_iteration):
             # Decay epsilon
             eps = max(eps - eps_decay * len(episode_data["s"]) / max_steps, 0.01)
         
-        # Update Q-function after collecting all episodes 
-        # for data in episodes_data:
-        #     returns = 0
-        #     for t in reversed(range(len(data["s"]))): # Loop for each step of episode, t = T .1, T .2, . . . , 0:
-        #         s, a, r = data["s"][t], data["a"][t], data["r"][t]
-        #         returns = r + gamma * returns
-        #         Returns.append(returns)
-        #         Q[s, a] += (returns - Q[s, a]) / (t + 1)  # every-visit MC update
-        # Initialize return G
+
         G = 0
 
         # Loop over the episode backwards to compute returns
         for t in range(len(episodes_data) - 1, -1, -1):
-            print(t)
+            # print(t)
             data = episodes_data[t]
             state, action, reward = data["s"][t], data["a"][t], data["r"][t] #episode_data[t]
             G = gamma * G + reward  # Incremental return calculation
@@ -124,12 +116,6 @@ def monte_carlo(env, Q, gamma, eps_decay, max_steps, episodes_per_iteration):
             # Find the best action (A*) for this state
             best_action = np.argmax(Q[state])
 
-            # # Update policy to be epsilon-soft
-            # for a in range(env.action_space.n):
-            #     if a == best_action:
-            #         epsilon_greedy_action_prob = 1 - epsilon + (epsilon / env.action_space.n)
-            #     else:
-            #         epsilon_greedy_action_prob = epsilon / env.action_space.n
         
         # Compute Bellman error after each batch of episodes
         pi = eps_greedy_probs(Q, eps)
@@ -220,3 +206,24 @@ plt.ioff()
 plt.show()
 
 
+
+
+        # Update Q-function after collecting all episodes 
+        # for data in episodes_data:
+        #     returns = 0
+        #     for t in reversed(range(len(data["s"]))): # Loop for each step of episode, t = T .1, T .2, . . . , 0:
+        #         s, a, r = data["s"][t], data["a"][t], data["r"][t]
+        #         returns = r + gamma * returns
+        #         Returns.append(returns)
+        #         Q[s, a] += (returns - Q[s, a]) / (t + 1)  # every-visit MC update
+        # Initialize return G
+
+
+
+        
+            # # Update policy to be epsilon-soft
+            # for a in range(env.action_space.n):
+            #     if a == best_action:
+            #         epsilon_greedy_action_prob = 1 - epsilon + (epsilon / env.action_space.n)
+            #     else:
+            #         epsilon_greedy_action_prob = epsilon / env.action_space.n

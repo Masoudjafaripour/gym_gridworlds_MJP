@@ -16,7 +16,7 @@ Q = defaultdict(lambda: np.zeros(n_actions))
 policy = np.zeros(n_states, dtype=int)
 
 # Set the number of episodes to run
-num_episodes = 3000
+num_episodes = 1000
 
 # Returns for keeping track of rewards and updating the Q-function
 Returns = defaultdict(list)
