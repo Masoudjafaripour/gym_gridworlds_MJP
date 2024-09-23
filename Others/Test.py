@@ -63,3 +63,125 @@ def monte_carlo(env, Q, gamma, eps_decay, max_steps, epsilon, episodes_per_itera
         
                 #log the bellman error for each time step. (If the policy is not changing, we should log the same error?)
     return Q, be, policy
+
+
+
+
+
+
+# Monte Carlo Control with Off-policy E-soft Policy
+# def off_policy_mc_control(env, Q, gamma, eps_decay, max_steps, episodes_per_iteration):
+#     eps = 1.0
+#     total_steps = 0
+#     bellman_errors = []
+#     C = np.zeros_like(Q)  # To store cumulative weights for each (state, action)
+#     pi = eps_greedy_probs(Q, eps)  # Greedy policy
+#     Q_true = bellman_q(pi, gamma)
+#     bellman_error = np.abs(Q - Q_true).sum()
+#     bellman_errors.append(bellman_error)
+    
+#     while total_steps < max_steps:
+#         for _ in range(episodes_per_iteration):
+#             # Generate an episode using a soft behavior policy `b`
+#             episode_data = episode(env, Q, eps, int(seed))  # Assume `episode()` returns states, actions, rewards
+#             G = 0
+#             W = 1
+
+#             # Loop over episode steps in reverse
+#             for t in range(len(episode_data["s"]) - 1, -1, -1):
+#                 state, action, reward = episode_data["s"][t], episode_data["a"][t], episode_data["r"][t]
+#                 G = gamma * G + reward
+
+#                 # Update cumulative weight
+#                 C[state][action] += W
+                
+#                 # Update Q-value with weighted importance sampling
+#                 Q[state][action] += W / C[state][action] * (G - Q[state][action])
+                
+#                 # Update the greedy policy `pi`
+#                 pi[state] = np.argmax(Q[state])  # Greedy action for current state
+
+#                 # If action taken is not the greedy action, stop updating
+#                 if action != pi[state]:
+#                     break
+                
+#                 # Update importance sampling weight
+#                 W *= 1.0 / eps_greedy_probs(Q, eps)[action][state]
+
+#             # Decay epsilon after each episode (soft behavior policy)
+#             eps = max(eps - eps_decay * len(episode_data["s"]) / max_steps, 0.01)
+#             total_steps += len(episode_data["s"])
+
+#         # Update the epsilon-greedy policy progressively
+#         pi = eps_greedy_probs(Q, eps)
+#         Q_true = bellman_q(pi, gamma)
+#         bellman_error = np.abs(Q - Q_true).sum()
+#         bellman_errors.append(bellman_error)
+
+#     # Ensure bellman_errors has the same length as max_steps
+#     if len(bellman_errors) > max_steps:
+#         bellman_errors = bellman_errors[:max_steps]  # Trim to match max_steps
+#     else:
+#         # Pad with the last bellman error if the length is shorter
+#         bellman_errors += [bellman_errors[-1]] * (max_steps - len(bellman_errors))
+
+#     return Q, bellman_errors
+
+# # Monte Carlo Control with Off-policy E-soft Policy
+# def off_policy_mc_control(env, Q, gamma, eps_decay, max_steps, episodes_per_iteration):
+#     eps = 1.0
+#     total_steps = 0
+#     bellman_errors = []
+#     C = np.zeros_like(Q)  # To store cumulative weights for each (state, action)
+#     pi = eps_greedy_probs(Q, eps)  # Greedy policy
+#     Q_true = bellman_q(pi, gamma)
+#     bellman_error = np.abs(Q - Q_true).sum()
+#     bellman_errors.append(bellman_error)
+    
+#     while total_steps < max_steps:
+#         for _ in range(episodes_per_iteration):
+#             # Generate an episode using a soft behavior policy `b`
+#             episode_data = episode(env, Q, eps, int(seed))
+#             G = 0
+#             W = 1
+
+#             # Loop over episode steps in reverse
+#             for t in range(len(episode_data["s"]) - 1, -1, -1):
+#                 state, action, reward = episode_data["s"][t], episode_data["a"][t], episode_data["r"][t]
+#                 G = gamma * G + reward
+
+#                 # Update cumulative weight
+#                 C[state][action] += W
+                
+#                 # Update Q-value with weighted importance sampling
+#                 Q[state][action] += W / C[state][action] * (G - Q[state][action])
+                
+#                 # Update the greedy policy `pi`
+#                 best_action = np.argmax(Q[state])  # Get the best action for the current state
+#                 pi[state] = best_action  # Update the policy
+                
+#                 # If action taken is not the greedy action, stop updating
+#                 if action != best_action:  # Compare with the best action
+#                     break
+                
+#                 # Update importance sampling weight
+#                 W *= 1.0 / eps_greedy_probs(Q, eps)[state][action]
+
+#             # Decay epsilon after each episode (soft behavior policy)
+#             eps = max(eps - eps_decay * len(episode_data["s"]) / max_steps, 0.01)
+#             total_steps += len(episode_data["s"])
+
+#         # Update the epsilon-greedy policy progressively
+#         pi = eps_greedy_probs(Q, eps)
+#         Q_true = bellman_q(pi, gamma)
+#         bellman_error = np.abs(Q - Q_true).sum()
+#         bellman_errors.append(bellman_error)
+
+#     # Ensure bellman_errors has the same length as max_steps
+#     if len(bellman_errors) > max_steps:
+#         bellman_errors = bellman_errors[:max_steps]  # Trim to match max_steps
+#     else:
+#         # Pad with the last bellman error if the length is shorter
+#         bellman_errors += [bellman_errors[-1]] * (max_steps - len(bellman_errors))
+
+#     return Q, bellman_errors

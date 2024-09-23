@@ -149,7 +149,8 @@ horizon = 10
 
 episodes_per_iteration = [1, 10, 50] # for updating Q after episodes_per_iteration
 decays = [0.5, 1, 2] #[1, 2, 5]
-seeds = np.arange(10) #50
+
+seeds = np.arange(5) #50
 
 # Initialize the results array
 results = np.zeros((

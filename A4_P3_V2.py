@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import defaultdict
 
-
 np.set_printoptions(precision=3)
 
 # Set up the environment
@@ -26,6 +25,7 @@ for s in range(n_states):
         T[s, a] = terminated
 
 P = P * (1.0 - T[..., None])  # next state probability for terminal transitions is 0
+
 #------------------------------------------------------------------------------------------------------
 # Bellman Equation Function
 def bellman_q(pi, gamma):
@@ -39,18 +39,17 @@ def eps_greedy_action(Q, s, eps):
         return np.random.choice(np.arange(len(Q[s])))  # random action
     else:
         return np.argmax(Q[s])  # greedy action
-#------------------------------------------------------------------------------------------------------
 
+#------------------------------------------------------------------------------------------------------
 # Epsilon-greedy policy
 def eps_greedy_probs(Q, eps):
     probs = np.ones((n_states, n_actions)) * (eps / n_actions)
     for s in range(n_states):
-        if s in Q and len(Q[s]) == n_actions:  # Ensure Q[s] is initialized
-            best_action = np.argmax(Q[s])
-            probs[s, best_action] += (1 - eps)
+        best_action = np.argmax(Q[s])
+        probs[s, best_action] += (1 - eps)
     return probs
-#------------------------------------------------------------------------------------------------------
 
+#------------------------------------------------------------------------------------------------------
 # Collect an episode following the current policy
 def episode(env, Q, eps, seed):
     np.random.seed(seed)  # for reproducibility
@@ -66,16 +65,15 @@ def episode(env, Q, eps, seed):
         data["r"].append(r)
         s = s_next
     return data
-#------------------------------------------------------------------------------------------------------
 
+#------------------------------------------------------------------------------------------------------
 # Compute the Bellman error for a given policy
 def compute_bellman_error(Q, pi, gamma):
     Q_true = bellman_q(pi, gamma)
     bellman_error = np.abs(Q - Q_true).sum()  # sum -->> Max absolute Bellman error
     return bellman_error
-#------------------------------------------------------------------------------------------------------
-#------------------------------------------------------------------------------------------------------
 
+#------------------------------------------------------------------------------------------------------
 # Epsilon-greedy policy for the target with epsilon = 0.01
 def target_eps_greedy_probs(Q):
     eps = 0.01
@@ -91,17 +89,17 @@ def off_policy_mc_control(env, Q, gamma, eps_decay, max_steps, episodes_per_iter
     total_steps = 0
     bellman_errors = []
     C = np.zeros_like(Q)  # To store cumulative weights for each (state, action)
-    
+
     # Use epsilon-greedy policy for behavior
     pi = eps_greedy_probs(Q, eps)
     target_pi = target_eps_greedy_probs(Q)  # Target policy with epsilon = 0.01
     Q_true = bellman_q(pi, gamma)
     bellman_error = np.abs(Q - Q_true).sum()
     bellman_errors.append(bellman_error)
-    
+
     while total_steps < max_steps:
         for _ in range(episodes_per_iteration):
-            # Generate an episode using the behavior policy `b` by eps not target_eps = 0.01
+            # Generate an episode using the behavior policy `b`
             episode_data = episode(env, Q, eps, int(seed))
             G = 0
             W = 1
@@ -113,20 +111,19 @@ def off_policy_mc_control(env, Q, gamma, eps_decay, max_steps, episodes_per_iter
 
                 # Update cumulative weight
                 C[state][action] += W
-                
+
                 # Calculate importance sampling weight
                 behavior_prob = eps_greedy_probs(Q, eps)[state][action]
                 target_prob = target_pi[state][action]
+                if target_prob > 0:
+                    W *= target_prob / behavior_prob
 
                 # Update Q-value with weighted importance sampling
                 Q[state][action] += W / C[state][action] * (G - Q[state][action])
-                
-                W = W * (1/behavior_prob)
+
                 # Update the greedy policy `pi`
                 best_action = np.argmax(Q[state])
                 pi[state] = best_action  # Update the policy
-                
-                bellman_errors.append(bellman_error)
 
                 # If action taken is not the greedy action, stop updating
                 if action != best_action:
@@ -141,6 +138,7 @@ def off_policy_mc_control(env, Q, gamma, eps_decay, max_steps, episodes_per_iter
         target_pi = target_eps_greedy_probs(Q)  # Update target policy
         Q_true = bellman_q(pi, gamma)
         bellman_error = np.abs(Q - Q_true).sum()
+        bellman_errors.append(bellman_error)
 
     # Ensure bellman_errors has the same length as max_steps
     if len(bellman_errors) > max_steps:
@@ -151,8 +149,6 @@ def off_policy_mc_control(env, Q, gamma, eps_decay, max_steps, episodes_per_iter
     return Q, bellman_errors
 
 #------------------------------------------------------------------------------------------------------
-#------------------------------------------------------------------------------------------------------
-
 # Error plot with confidence interval
 def error_shade_plot(ax, data, stepsize, **kwargs):
     y = np.nanmean(data, 0)
@@ -166,66 +162,44 @@ def error_shade_plot(ax, data, stepsize, **kwargs):
 # Hyperparameters
 init_value = 0.0
 gamma = 0.9
-max_steps = 2000 #2000
+max_steps = 2000
 horizon = 10
 
-episodes_per_iteration = [1, 10, 50] # for updating Q after episodes_per_iteration
-decays = [0.5, 1, 2] #[1, 2, 5]
-
-seeds = np.arange(3) #50
+episodes_per_iteration = [1, 10, 50]
+decays = [0.5, 1, 2]
+seeds = np.arange(2)
 
 # Initialize the results array
-results = np.zeros((
-    len(episodes_per_iteration),
-    len(decays),
-    len(seeds),
-    max_steps,
-))
+results = np.zeros((len(episodes_per_iteration), len(decays), len(seeds), max_steps))
 
 # Initialize the plot
 fig, axs = plt.subplots(1, 2)
 plt.ion()
 plt.show()
 
-use_is = False  # Not using Importance Sampling for Part 1
-for ax, reward_noise_std in zip(axs, [0.0, 3.0]):  # Two subplots: one with reward noise, one without
-    ax.set_prop_cycle(
-        color=["red", "green", "blue", "black", "orange", "cyan", "brown", "gray", "pink"]
-    )
+for ax, reward_noise_std in zip(axs, [0.0, 3.0]):
+    ax.set_prop_cycle(color=["red", "green", "blue", "black", "orange", "cyan", "brown", "gray", "pink"])
     ax.set_xlabel("Steps")
     ax.set_ylabel("Absolute Bellman Error")
-    
+
     # Create environment with reward noise if applicable
-    env = gymnasium.make(
-        "Gym-Gridworlds/Penalty-3x3-v0",
-        max_episode_steps=horizon,
-        reward_noise_std=reward_noise_std,
-    )
-    
+    env = gymnasium.make("Gym-Gridworlds/Penalty-3x3-v0", max_episode_steps=horizon, reward_noise_std=reward_noise_std)
+
     # Run the experiment for all combinations of episodes per iteration and decay
     for j, episodes_p in enumerate(episodes_per_iteration):
         for k, decay in enumerate(decays):
             for seed in seeds:
                 np.random.seed(seed)
                 Q = np.zeros((n_states, n_actions)) + init_value
-                Q, be = off_policy_mc_control(env, Q, gamma, decay / 1, max_steps, episodes_p) #/max_steps
+                Q, be = off_policy_mc_control(env, Q, gamma, decay / 1, max_steps, episodes_p)
                 results[j, k, seed] = be
                 print(k, j, seed)
 
-            error_shade_plot(
-                ax,
-                results[j, k],
-                stepsize=1,
-                label=f"Episodes: {episodes_p}, Decay: {decay}",
-            )
+            error_shade_plot(ax, results[j, k], stepsize=1, label=f"Episodes: {episodes_p}, Decay: {decay}")
             ax.legend()
             plt.draw()
             plt.pause(0.001)
 
-
 print("done")
-
 plt.ioff()
 plt.show()
-
-
