@@ -89,67 +89,91 @@ def td(env, env_eval, Q, gamma, eps, alpha, max_steps, alg):
     eps_decay = 1.0 / max_steps  # Epsilon decay rate
     alpha_decay = 0.1 / max_steps  # Alpha decay rate
 
+    Q1 = 0.5 * Q
+    Q2 = 0.5 * Q
+
     tot_steps = 0
     while tot_steps < max_steps:
         # Reset the environment for each episode
         state, _ = env.reset()
         done = False
         while not done and tot_steps < max_steps: #
-            # Choose an action using epsilon-greedy policy
-            action = eps_greedy_action(Q, state, eps)
+            # Choose A from S using epsilon-greedy policy derived from (Q1 + Q2)
+            action = eps_greedy_action(Q1 + Q2, n_actions, eps)
 
-            # Take action and observe next state, reward, and termination
+            # Take action A, observe reward R and next state S'
             next_state, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
 
-            # Q-Learning: TD Target
-            if alg == "QL":
-                next_action = np.argmax(Q[next_state])  # Greedy action
-
-                td_target = reward + gamma * Q[next_state, next_action]* (not done)
-                td_error = (td_target - Q[state, action])  # TD error for Q-learning
-
+            if alg == "DQL":
+                # With 0.5 probability, update either Q1 or Q2
+                if np.random.rand() < 0.5:
+                    # Update Q1
+                    best_action_Q1 = np.argmax(Q1[next_state])  # Best action from Q1
+                    td_error = (reward + gamma * Q2[next_state, best_action_Q1] * (not done) - Q1[state, action])
+                    Q1[state, action] += alpha * td_error
+                else:
+                    # Update Q2
+                    best_action_Q2 = np.argmax(Q2[next_state])  # Best action from Q2
+                    td_error = (reward + gamma * Q1[next_state, best_action_Q2] * (not done) - Q2[state, action])
+                    Q2[state, action] += alpha * td_error
+            
             # SARSA: TD Target
-            elif alg == "SARSA":
-                next_action = eps_greedy_action(Q, state, eps)
-
-                td_target = reward + gamma * Q[next_state, next_action]* (not done)
-                td_error = (td_target - Q[state, action])  # TD error for SARSA
+            elif alg == "DSARSA":
+                # With 0.5 probability, update either Q1 or Q2
+                if np.random.rand() < 0.5:
+                    # Update Q1
+                    next_action_Q1 = eps_greedy_action(Q1, state, eps) # Next action from Q1
+                    td_error = (reward + gamma * Q2[next_state, next_action_Q1] * (not done) - Q1[state, action])
+                    Q1[state, action] += alpha * td_error
+                else:
+                    # Update Q2
+                    next_action_Q2 = eps_greedy_action(Q2, state, eps) # Next action from Q1
+                    td_error = (reward + gamma * Q1[next_state, next_action_Q2] * (not done) - Q2[state, action])
+                    Q2[state, action] += alpha * td_error
 
             # Expected SARSA: TD Target
-            elif alg == "Exp_SARSA":
-                expected_value = np.dot(eps_greedy_probs_q(Q[next_state], eps), Q[next_state])
-
-                td_target = reward + gamma * expected_value * (not done)
-                td_error = (td_target - Q[state, action])  # TD error for Expected SARSA
+            elif alg == "DExp_SARSA":
+                # With 0.5 probability, update either Q1 or Q2
+                if np.random.rand() < 0.5:
+                    # Update Q1
+                    expected_value_Q2 = np.dot(eps_greedy_probs_q(Q2[next_state], eps), Q2[next_state])
+                    td_target = reward + gamma * expected_value_Q2 * (not done)
+                    td_error = (td_target - Q1[state, action])  # TD error for Expected SARSA
+                    Q1[state, action] += alpha * td_error
+                else:
+                    # Update Q2
+                    expected_value_Q1 = np.dot(eps_greedy_probs_q(Q1[next_state], eps), Q1[next_state])
+                    td_target = reward + gamma * expected_value_Q1 * (not done)
+                    td_error = (td_target - Q2[state, action])  # TD error for Expected SARSA
+                    Q2[state, action] += alpha * td_error          
 
             # Log TD error at each step
-            tde[tot_steps] = np.abs(td_error)  
-
-            # Update Q-value
-            Q[state, action] += alpha * td_error          
+            tde[tot_steps] = np.abs(td_error)        
 
             # Log Bellman error and expected return every 100 steps
             if tot_steps % 100 == 0:
                 # Compute the Bellman error using the provided bellman_q function
                 # Q-Learning: Greedy policy (epsilon = 0, fully greedy)
-                if alg == "QL":
+                if alg == "DQL":
                     pi = eps_greedy_probs(Q, 0)
 
                 # SARSA: Epsilon-greedy policy (same as the exploration policy)
-                elif alg == "SARSA":
+                elif alg == "DSARSA":
                     pi = eps_greedy_probs(Q, eps)
 
                 # Expected SARSA: Epsilon-greedy policy (same as the exploration policy)
-                elif alg == "Exp_SARSA":
+                elif alg == "DExp_SARSA":
                     pi = eps_greedy_probs(Q, eps)
 
+                # Compute the mean of the two Q-functions
+                mean_Q = (Q1 + Q2) / 2
                 bellman_Q = bellman_q(pi, gamma = 0.99) 
-                bellman_error = np.mean(np.abs(bellman_Q - Q))  # Mean Bellman error
+                bellman_error = np.mean(np.abs(bellman_Q - mean_Q))  # Mean Bellman error
                 be.append(bellman_error)
 
                 # Evaluate the expected return using the current Q-function
-                G = expected_return(env_eval, Q, gamma)
+                G = expected_return(env_eval, mean_Q, gamma)
                 exp_ret.append(G)
             
             # Move to the next state
@@ -194,11 +218,9 @@ max_steps = 10000
 horizon = 10
 
 init_values = [-10, 0.0, 10]
-algs = ["QL", "SARSA", "Exp_SARSA"]
+algs = ["DQL", "DSARSA", "DExp_SARSA"]
 
-algs = ["QL"]
-
-seeds = np.arange(10)
+seeds = np.arange(50)
 
 results_be = np.zeros((
     len(init_values),
