@@ -89,7 +89,7 @@ GRIDS = {
         [EMPTY, QCKSND, GOOD_SMALL, EMPTY],
         [EMPTY, EMPTY, EMPTY, EMPTY],
     ],
-    "5x5_full": [
+    "4x5_full": [
         [EMPTY, EMPTY, GOOD_SMALL, BAD, GOOD],
         [EMPTY, EMPTY, BAD, EMPTY, EMPTY],
         [RIGHT, EMPTY, QCKSND, GOOD_SMALL, EMPTY],
@@ -182,10 +182,18 @@ class Gridworld(gym.Env):
      3 4 5
      6 7 8
 
-    It is also possible to learn from pixel observations.
-    Pixel observations can be made partial by passing 'view_radius'. For example,
-    if 'view_radius=1' the rendering will show the content of only the tiles
+    If you prefer to observe the `(row, col)` index of the current position of the
+    agent, make the environment with the `coordinate_observation=True` argument.
+
+    To use classic RGB pixel observations, make the environment with the
+    `render_mode=rgb_array`.
+    Pixel observations can be made partial by passing `view_radius`. For example,
+    if `view_radius=1` the rendering will show the content of only the tiles
     around the agent, while all other tiles will be filled with white noise.
+
+    Finally, you can also use binary observations by making the environment with
+    the `render_mode=binary` argument. Observations will be a matrix of 0s
+    and one 1 corresponding to the position of the agent.
 
     ## Starting State
     The episode starts with the agent at the top-left tile.
@@ -193,10 +201,10 @@ class Gridworld(gym.Env):
     ## Transition
     By default, the transition is deterministic except in quicksand tiles,
     where any action fails with 90% probability (the agent does not move).
-    Transition can be made stochastic everywhere by passing 'random_action_prob'.
+    Transition can be made stochastic everywhere by passing `random_action_prob`.
     This is the probability that the action will be random.
-    For example, if 'random_action_prob=0.1' there is a 10% chance that the agent
-    will do a random action instead of doing the one passed to 'self.step(action)'.
+    For example, if `random_action_prob=0.1` there is a 10% chance that the agent
+    will do a random action instead of doing the one passed to `self.step(action)`.
 
     ## Rewards
     - Doing STAY at the goal: +1
@@ -206,8 +214,8 @@ class Gridworld(gym.Env):
     - Walking on a pit tile: -100
     - Otherwise: 0
 
-    White noise can be added to all rewards by passing 'reward_noise_std',
-    or only to nonzero rewards with 'nonzero_reward_noise_std'.
+    White noise can be added to all rewards by passing `reward_noise_std`,
+    or only to nonzero rewards with `nonzero_reward_noise_std`.
 
     ## Episode End
     By default, an episode ends if any of the following happens:
@@ -241,6 +249,7 @@ class Gridworld(gym.Env):
     def __init__(
         self,
         grid: str,
+        coordinate_observation: Optional[bool] = False,
         render_mode: Optional[str] = None,
         random_action_prob: Optional[float] = 0.0,
         reward_noise_std: Optional[float] = 0.0,
@@ -250,12 +259,21 @@ class Gridworld(gym.Env):
     ):
         self.grid_key = grid
         self.grid = np.asarray(GRIDS[self.grid_key])
+        self.coordinate_observation = coordinate_observation
         self.random_action_prob = random_action_prob
         self.reward_noise_std = reward_noise_std
         self.nonzero_reward_noise_std = nonzero_reward_noise_std
 
         self.n_rows, self.n_cols = self.grid.shape
-        self.observation_space = gym.spaces.Discrete(self.n_cols * self.n_rows)
+        if self.coordinate_observation:
+            self.observation_space = gym.spaces.Box(
+                low=np.array([0.0, 0.0]),
+                high=np.array([self.n_rows - 1, self.n_cols - 1]),
+                dtype=np.float32,
+            )
+        else:
+            self.observation_space = gym.spaces.Discrete(self.n_cols * self.n_rows)
+
         self.action_space = gym.spaces.Discrete(5)
         self.agent_pos = None
         self.last_action = None
@@ -274,10 +292,16 @@ class Gridworld(gym.Env):
         )  # fmt: skip
 
     def set_state(self, state):
-        self.agent_pos = np.unravel_index(state, (self.n_rows, self.n_cols))
+        if self.coordinate_observation:
+            self.agent_pos = tuple(np.array(state).ravel())
+        else:
+            self.agent_pos = np.unravel_index(state, (self.n_rows, self.n_cols))
 
     def get_state(self):
-        return np.ravel_multi_index(self.agent_pos, (self.n_rows, self.n_cols))
+        if self.coordinate_observation:
+            return np.array(self.agent_pos, dtype=np.float32)
+        else:
+            return np.ravel_multi_index(self.agent_pos, (self.n_rows, self.n_cols))
 
     def reset(self, seed: int = None, **kwargs):
         super().reset(seed=seed, **kwargs)
@@ -605,9 +629,9 @@ class RiverSwim(Gridworld):
         return self.get_state(), {}
 
     def _step(self, action: int):
-        state = self.get_state()
+        state = np.ravel_multi_index(self.agent_pos, (self.n_rows, self.n_cols))
         first = 0
-        last = self.observation_space.n - 1
+        last = self.n_rows * self.n_cols - 1
 
         # Map action to match Gridworld notation
         if action == 0:
