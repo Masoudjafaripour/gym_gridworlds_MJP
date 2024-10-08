@@ -36,46 +36,48 @@ def eps_greedy_action(Q, eps):
 
 def fqi(seed):
     data = dict()
+    # init dataset  ## what? 
+
     eps = 1.0
     idx_data = 0
     tot_steps = 0
     weights = np.zeros((phi_dummy.shape[1], n_actions))
     exp_return = expected_return(env_eval, weights, gamma, episodes_eval)
-    td_error = np.nan
+    abs_td_error = np.nan
     exp_return_history = np.zeros((max_steps))
     td_error_history = np.zeros((max_steps))
     pbar = tqdm(total=max_steps)
 
     while True:
-        s, _ = env.reset(seed=seed+tot_steps)
+        s, _ = env.reset(seed=seed+tot_steps)  # note that this does not make really unique seeds, but let's keep it simple
         done = False
         ep_steps = 0
         while not done and tot_steps < max_steps:
-            phi = get_phi(s)
-            Q = np.dot(phi, weights).ravel()
-            a = eps_greedy_action(Q, eps)
-            s_next, r, terminated, truncated, _ = env.step(a)
-            done = terminated or truncated
-            phi_next = get_phi(s_next)
-            # FQI logic
-            for iter in range(fitting_iterations):
-                td_target = r + gamma * (1.0 - done) * np.dot(phi_next, weights).max(-1)
-                for act in range(n_actions):
-                    if (a == act).sum() > 0:
-                        gradient = ((td_target[a == act] - np.dot(phi[a == act], weights[:, act]))[..., None] * phi[a == act])
-                        weights[:, act] += alpha * gradient.mean(0)
-                if np.allclose(weights, weights.copy(), rtol=1e-5, atol=1e-5):
-                    break
+            # collect samples: select act, do env step, store sample
+            # after datasize steps (D samples), do FQI
+            #   for fitting_iterations (K)
+            #       weights_before_fit = weights.copy()
+            #       fix target
+            #       for gradient_steps (N)
+            #           weights_before_step = weights.copy()
+            #           gradient descent
+            #           save abs TD error (see snippet from A6)
+            #           break if np.allclose(weights, weights_before_step, rtol=1e-5, atol=1e-5)
+            #       break if np.allclose(weights, weights_before_fit, rtol=1e-5, atol=1e-5)
+
+            if tot_steps % log_frequency == 0:
+                exp_return = expected_return(env_eval, weights, gamma, episodes_eval)
+                pbar.set_description(
+                    f"TDE: {abs_td_error:.3f}, " +
+                    f"G: {exp_return:.3f}"
+                )
+            exp_return_history[tot_steps] = exp_return
+            td_error_history[tot_steps] = abs_td_error
+
             s = s_next
             tot_steps += 1
             ep_steps += 1
             eps = max(eps - 1.0 / max_steps, 0.5)
-            
-            if tot_steps % log_frequency == 0:
-                exp_return = expected_return(env_eval, weights, gamma, episodes_eval)
-                pbar.set_description(f"TDE: {np.abs(td_error).sum():.3f}, G: {exp_return:.3f}")
-            exp_return_history[tot_steps] = exp_return
-            td_error_history[tot_steps] = np.abs(td_target - np.dot(phi, weights)).mean()
 
         pbar.update(ep_steps)
         if tot_steps >= max_steps:
@@ -84,13 +86,16 @@ def fqi(seed):
     pbar.close()
     return td_error_history, exp_return_history
 
+
 env_id = "Gym-Gridworlds/Empty-2x2-v0"
 env = gymnasium.make(env_id, coordinate_observation=True, random_action_prob=0.1, reward_noise_std=0.01)
-env_eval = gymnasium.make(env_id, coordinate_observation=True, max_episode_steps=10)
-episodes_eval = 10
+env_eval = gymnasium.make(env_id, coordinate_observation=True, max_episode_steps=10)  # 10 steps only for faster eval
+episodes_eval = 10  # max expected return will be 0.994
 
 state_dim = env.observation_space.shape[0]
 n_actions = env.action_space.n
+
+# automatically set centers and sigmas
 
 n_centers = [2, 2]
 centers = np.array(
@@ -99,13 +104,14 @@ centers = np.array(
         for i in range(env.observation_space.shape[0])
     ])
 ).reshape(env.observation_space.shape[0], -1).T
-sigmas = (env.observation_space.high - env.observation_space.low) / n_centers / 4.0 + 1e-8
-get_phi = lambda state : aggregation_features(state.reshape(-1, state_dim), centers)
-phi_dummy = get_phi(env.reset()[0])
+sigmas = (env.observation_space.high - env.observation_space.low) / n_centers / 4.0 + 1e-8 # 4.0 is arbitrary
+get_phi = lambda state : aggregation_features(state.reshape(-1, state_dim), centers)  # reshape because feature functions expect shape (N, S)
+phi_dummy = get_phi(env.reset()[0])  # to get the number of features
 
-gradient_steps_sweep = [1, 100, 1000]
-fitting_iterations_sweep = [1, 100, 1000]
-datasize_sweep = [1, 100, 1000]
+# hyperparameters
+gradient_steps_sweep = [1, 100, 1000]  # N in pseudocode
+fitting_iterations_sweep = [1, 100, 1000]  # K in pseudocode
+datasize_sweep = [1, 100, 1000]  # D in pseudocode
 gamma = 0.99
 alpha = 0.05
 max_steps = 10000
@@ -124,7 +130,9 @@ results_tde = np.zeros_like(results_ret)
 for i, gradient_steps in enumerate(gradient_steps_sweep):
     for j, fitting_iterations in enumerate(fitting_iterations_sweep):
         for k, datasize in enumerate(datasize_sweep):
-            label = f"Grad Steps: {gradient_steps}, Fit Iters: {fitting_iterations}, Datasize: {datasize}"
+            label = f"Grad Steps: {gradient_steps}, " + \
+                    f"Fit Iters: {fitting_iterations}, " + \
+                    f"Datasize: {datasize}"
             print(label)
             for seed in range(n_seeds):
                 td_error, exp_return = fqi(seed)
