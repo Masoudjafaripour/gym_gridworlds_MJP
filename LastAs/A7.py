@@ -131,14 +131,13 @@ def fqi(seed):
             # Log progress and update exploration rate
             if tot_steps % log_frequency == 0:
                 exp_return = expected_return(env_eval, weights, gamma, episodes_eval)
-                mean_td_error = abs_td_error
 
                 pbar.set_description(
-                    f"TDE: {mean_td_error:.3f}, " +
+                    f"TDE: {abs_td_error:.3f}, " +
                     f"G: {exp_return:.3f}"
                 )
             exp_return_history[tot_steps] = exp_return
-            td_error_history[tot_steps] = mean_td_error
+            td_error_history[tot_steps] = abs_td_error
 
             s = s_next
             tot_steps += 1
