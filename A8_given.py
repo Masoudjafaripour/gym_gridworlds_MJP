@@ -23,9 +23,10 @@ def expected_return(env, weights, gamma, episodes=100):
             phi = get_phi(s)
             a = np.dot(phi, weights)
             a_clip = np.clip(a, env.action_space.low, env.action_space.high)  # this is for the Pendulum
+            # a = eps_greedy_action(phi, weights, 0)  # this is for the Gridworld
             s_next, r, terminated, truncated, _ = env.step(a_clip)  # replace with a for Gridworld
             done = terminated or truncated
-            G[e] += gamma**t * r.item()  # Ensuring r is scalar
+            G[e] += gamma**t * r
             s = s_next
             t += 1
     return G.mean()
@@ -43,19 +44,18 @@ def collect_data(env, weights, sigma, n_episodes):
         while not done:
             phi = get_phi(s)
             a = gaussian_action(phi, weights, sigma)
+            # a = softmax_action(phi, weights, eps) # for discrete
             a_clip = np.clip(a, env.action_space.low, env.action_space.high)  # only for Gaussian policy
             s_next, r, terminated, truncated, _ = env.step(a_clip)
             done = terminated or truncated
             data["phi"].append(phi)
             data["a"].append(a)
-            # data["r"].append(r)
-            data["r"].append(float(r))  # Ensure r is scalar
-
+            data["r"].append(r)
             data["done"].append(terminated or truncated)
             s = s_next
     return data
 
-def eps_greedy_action(phi, weights, eps):
+# def eps_greedy_action(phi, weights, eps): # for action selection in discrete
     if np.random.rand() < eps:
         return np.random.randint(n_actions)
     else:
@@ -66,6 +66,8 @@ def eps_greedy_action(phi, weights, eps):
 
 def softmax_probs(phi, weights, eps):
     q = np.dot(phi, weights)
+    # this is a trick to make it more stable
+    # see https://timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick/
     q_exp = np.exp((q - np.max(q, -1, keepdims=True)) / max(eps, 1e-12))
     probs = q_exp / q_exp.sum(-1, keepdims=True)
     return probs
@@ -74,23 +76,67 @@ def softmax_action(phi, weights, eps):
     probs = softmax_probs(phi, weights, eps)
     return np.random.choice(weights.shape[1], p=probs.ravel())
 
-def gaussian_action(phi: np.array, weights: np.array, sigma: float) -> np.array:
-    mu = np.dot(phi, weights)
-    return np.random.normal(mu, sigma)  # use sigma directly, not sigma**2
+# def dlog_softmax_probs(phi, weights, eps, act):
+#     # implement log-derivative of pi
 
-# def dlog_gaussian_probs(phi: np.array, weights: np.array, sigma: float, action: np.array) -> np.array:
-#     mu = np.dot(phi, weights)
-#     return (action - mu) / (sigma**2)
+def dlog_softmax_probs(phi, weights, eps, act):
+    # implement log-derivative of pi for softmax policy
+    # weights shape: (n_features, n_actions)
+    # phi shape: (n_features,)
+    # act: scalar (action index)
+    
+    # Calculate logits (θᵀφ)
+    logits = np.dot(phi, weights)  # shape: (n_actions,)
+    
+    # Calculate softmax probabilities
+    # pi(a|s) = exp(θᵀφ) / Σ exp(θᵀφ)
+    exp_logits = np.exp(logits - np.max(logits))  # subtract max for numerical stability
+    probs = exp_logits / np.sum(exp_logits)
+    
+    # Calculate gradient of log pi(a|s)
+    # ∇θ log π(a|s) = φ(1[a=a'] - π(a'|s))
+    grad = np.zeros_like(weights)  # shape: (n_features, n_actions)
+    
+    # For each feature
+    for i in range(len(phi)):
+        # Gradient is feature * (1 for chosen action - probability)
+        grad[i] = phi[i] * (-probs)  # Fill with -probs first
+        grad[i, act] += phi[i]  # Add 1 for the chosen action
+    
+    return grad
+
+
+# def dlog_gaussian_probs(phi, weights, sigma, action: np.array):
+#     # implement log-derivative of pi with respect to the mean only
 
 def dlog_gaussian_probs(phi: np.array, weights: np.array, sigma: float, action: np.array) -> np.array:
+    # implement log-derivative of pi for Gaussian policy
+    # For Gaussian policy: π(a|s) = N(μ(s), σ²)
+    # where μ(s) = φ(s)ᵀw
+    
+    # Calculate mean of the Gaussian (μ = φᵀw)
     mu = np.dot(phi, weights)
-    return ((action - mu) / (sigma**2)).ravel()  # Ensuring it's a 1D array
+    
+    # For Gaussian policy, the log derivative is:
+    # ∇w log π(a|s) = (a - μ)φ / σ²
+    
+    # Calculate the difference between action and mean
+    diff = action - mu
+    
+    # Calculate gradient
+    # Note: phi is the feature vector, and we multiply it by diff/sigma²
+    # This gives us the gradient with respect to the weights
+    grad = phi * (diff / (sigma**2))
+    
+    return grad
+
+def gaussian_action(phi: np.array, weights: np.array, sigma: np.array):
+    mu = np.dot(phi, weights)
+    return np.random.normal(mu, sigma**2)
 
 
 def reinforce(baseline="none"):
     weights = np.zeros((phi_dummy.shape[1], action_dim))
-    gradient = np.zeros(weights.shape)  # Initialize gradient
-
     sigma = 1.0  # for Gaussian
     eps = 1.0  # softmax temperature, DO NOT DECAY
     tot_steps = 0
@@ -99,25 +145,83 @@ def reinforce(baseline="none"):
     pbar = tqdm(total=max_steps)
 
     while tot_steps < max_steps:
+        # Collect data
         data = collect_data(env, weights, sigma, n_episodes=10)  # Collect data from the environment
         r = np.vstack(data["r"])  # Stack returns
         G = np.zeros(r.shape[0])  # Initialize the MC returns
+        T = len(r)  # T is the total number of steps collected across all episodes
         
-        # Compute MC returns
+        # Update weights with baseline
+        if baseline == "none":
+            baseline_value = 0
+        elif baseline == "average":
+            baseline_value = G.mean()
+        elif baseline == "optimal":
+            baseline_value = ...  # Compute optimal baseline here
+        
+        # Normalize returns
+        G -= baseline_value
+
+        # Compute MC return (Monte Carlo return)
         cumulative_sum = 0
-        for t in reversed(range(len(r))):
+        for t in reversed(range(T)):
             if data["done"][t]:  # Check if the episode is done
                 cumulative_sum = 0  # Reset cumulative sum at episode end
             cumulative_sum = gamma * cumulative_sum + r[t].item()  # Ensuring r[t] is scalar
             G[t] = cumulative_sum.item()  # Ensuring cumulative_sum is scalar
-            # G[t] = cumulative_sum  # No need for `.item()` here
-
-
-        # Compute gradients
-        dlog_pi = np.zeros((len(r), len(weights)))  # Initialize gradients
-        for t in range(len(r)):
+        
+        # Compute gradient of all samples (with/without baseline)
+        dlog_pi = np.zeros((T, len(weights)))  # Initialize gradients
+        for t in range(T):
             phi = data["phi"][t]  # Get feature vector
             dlog_pi[t] = dlog_gaussian_probs(phi, weights, sigma, data["a"][t])  # Compute gradient
+        
+        # Compute gradients with returns
+        gradient = np.zeros_like(weights)
+        for t in range(T):
+            G_t = float(G[t])  # Ensure G[t] is a scalar
+            gradient += dlog_pi[t] * G_t  # Accumulate gradient
+
+        # Average gradient over all samples
+        gradient /= T
+        
+        # Update weights
+        weights += alpha * gradient
+
+        # Update return history and total steps
+        exp_return_history[tot_steps : tot_steps + T] = exp_return 
+        tot_steps += T
+
+        # Evaluate the policy
+        exp_return = expected_return(env_eval, weights, gamma, episodes_eval)
+
+        # Decay sigma
+        sigma = max(sigma - T / max_steps, 0.1)
+
+        # Progress bar update
+        pbar.set_description(f"G: {exp_return:.3f}")
+        pbar.update(T)
+
+    pbar.close()
+    return exp_return_history
+
+
+# def reinforce(baseline="none"):
+    weights = np.zeros((phi_dummy.shape[1], action_dim))
+    sigma = 1.0  # for Gaussian
+    eps = 1.0  # softmax temperature, DO NOT DECAY
+    tot_steps = 0
+    exp_return_history = np.zeros(max_steps)
+    exp_return = expected_return(env_eval, weights, gamma, episodes_eval)
+    pbar = tqdm(total=max_steps)
+
+    while tot_steps < max_steps:
+        # collect data
+        data = collect_data(env, weights, sigma, n_episodes=10)  # Collect data from the environment
+        r = np.vstack(data["r"])  # Stack returns
+        G = np.zeros(r.shape[0])  # Initialize the MC returns
+        T = len(r)  # T is the total number of steps collected across all episodes
+
 
         # Update weights with baseline
         if baseline == "none":
@@ -130,42 +234,47 @@ def reinforce(baseline="none"):
         # Normalize returns
         G -= baseline_value
 
-        # Update weights
-        # gradient = np.zeros(weights.shape)
-        # for t in range(len(r)):
-        #     gradient += dlog_pi[t].ravel() * G[t]  # Using ravel() for flattening
-
-        # Update weights
-        # Compute gradients
-        dlog_pi = np.zeros((len(r), weights.shape[0]))  # Ensure dlog_pi has correct shape
+        # compute MC return
+        cumulative_sum = 0
+        for t in reversed(range(len(r))):
+            if data["done"][t]:  # Check if the episode is done
+                cumulative_sum = 0  # Reset cumulative sum at episode end
+            cumulative_sum = gamma * cumulative_sum + r[t].item()  # Ensuring r[t] is scalar
+            G[t] = cumulative_sum.item()  # Ensuring cumulative_sum is scalar
+        
+        # compute gradient of all samples (with/without baseline)
+        dlog_pi = np.zeros((len(r), len(weights)))  # Initialize gradients
         for t in range(len(r)):
             phi = data["phi"][t]  # Get feature vector
-            dlog_pi[t] = dlog_gaussian_probs(phi, weights, sigma, data["a"][t]).ravel()  # Flatten the result
-
+            dlog_pi[t] = dlog_gaussian_probs(phi, weights, sigma, data["a"][t])  # Compute gradient
+        
         # Ensure G is scalar by extracting its first element (if necessary)
         for t in range(len(r)):
             G_t = float(G[t])  # Ensure G[t] is a scalar
             gradient += dlog_pi[t] * G_t  # Compute the gradient sum
 
+        # average gradient over all samples
+        
+        # update weights
+
         # Finally, update weights
         weights += alpha * gradient / len(r)
 
 
-        # Update expected return
+
+        T = ... # steps taken while collecting data
+        exp_return_history[tot_steps : tot_steps + T] = exp_return 
+        tot_steps += T
         exp_return = expected_return(env_eval, weights, gamma, episodes_eval)
-        exp_return_history[tot_steps : tot_steps + len(r)] = exp_return
-        tot_steps += len(r)
+        sigma = max(sigma - T / max_steps, 0.1)
 
-        # Update sigma for Gaussian action
-        sigma = max(sigma - len(r) / max_steps, 0.1)
-
-        pbar.set_description(f"G: {exp_return:.3f}")
-        pbar.update(len(r))
+        pbar.set_description(
+            f"G: {exp_return:.3f}"
+        )
+        pbar.update(T)
 
     pbar.close()
     return exp_return_history
-
-
 
 
 # https://stackoverflow.com/a/63458548/754136
@@ -200,8 +309,6 @@ episodes_eval = 100
 state_dim = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 
-
-
 # UNCOMMENT TO SOLVE THE GRIDWORLD
 # env_id = "Gym-Gridworlds/Penalty-3x3-v0"
 # env = gymnasium.make(env_id, coordinate_observation=True, distance_reward=True)
@@ -209,9 +316,6 @@ action_dim = env.action_space.shape[0]
 # episodes_eval = 1  # max expected return will be 0.941
 # state_dim = env.observation_space.shape[0]
 # n_actions = env.action_space.n
-
-
-
 
 
 # automatically set centers and sigmas
