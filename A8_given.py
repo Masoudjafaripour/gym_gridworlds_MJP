@@ -79,7 +79,7 @@ def softmax_action(phi, weights, eps):
 # def dlog_softmax_probs(phi, weights, eps, act):
 #     # implement log-derivative of pi
 
-def dlog_softmax_probs(phi, weights, eps, act):
+# def dlog_softmax_probs(phi, weights, eps, act):
     # implement log-derivative of pi for softmax policy
     # weights shape: (n_features, n_actions)
     # phi shape: (n_features,)
@@ -105,11 +105,39 @@ def dlog_softmax_probs(phi, weights, eps, act):
     
     return grad
 
+def dlog_softmax_probs(phi, weights, eps, act):
+    """
+    Compute the log-derivative of the softmax probabilities.
+
+    Parameters:
+    - phi: feature vector (state representation)
+    - weights: weights for the action preferences
+    - eps: small constant for numerical stability
+    - act: action taken
+
+    Returns:
+    - Gradient of the log-probability with respect to the weights.
+    """
+    # Compute logits and softmax probabilities
+    logits = np.dot(phi, weights)
+    exp_logits = np.exp(logits - np.max(logits))  # Subtract max for numerical stability
+    softmax_probs = exp_logits / (np.sum(exp_logits) + eps)
+
+    # Create one-hot encoding for the action taken
+    one_hot_action = np.zeros_like(softmax_probs)
+    one_hot_action[act] = 1
+
+    # Compute the gradient of the log probability
+    dlog_prob = one_hot_action - softmax_probs  # (1 - p(a|s))
+
+    # Return gradient w.r.t. weights # ??
+    return np.outer(phi, dlog_prob)
+
 
 # def dlog_gaussian_probs(phi, weights, sigma, action: np.array):
 #     # implement log-derivative of pi with respect to the mean only
 
-def dlog_gaussian_probs(phi: np.array, weights: np.array, sigma: float, action: np.array) -> np.array:
+# def dlog_gaussian_probs(phi: np.array, weights: np.array, sigma: float, action: np.array) -> np.array:
     # implement log-derivative of pi for Gaussian policy
     # For Gaussian policy: π(a|s) = N(μ(s), σ²)
     # where μ(s) = φ(s)ᵀw
@@ -129,6 +157,29 @@ def dlog_gaussian_probs(phi: np.array, weights: np.array, sigma: float, action: 
     grad = phi * (diff / (sigma**2))
     
     return grad
+
+def dlog_gaussian_probs(phi: np.array, weights: np.array, sigma: float, action: np.array) -> np.array:
+    """
+    Compute the log-derivative of the Gaussian probabilities w.r.t. the mean.
+
+    Parameters:
+    - phi: feature vector (state representation)
+    - weights: weight matrix for the mean function
+    - sigma: standard deviation (assumed diagonal covariance)
+    - action: action taken
+
+    Returns:
+    - Gradient of the log-probability w.r.t. the weights.
+    """
+    # Mean of the Gaussian policy
+    mu = np.dot(phi, weights)
+
+    # Gradient of log probability w.r.t mean
+    dlog_prob = (action - mu) / (sigma ** 2)  # (a - mu) / sigma^2
+
+
+    # Return gradient with respect to weights
+    return np.outer(phi, dlog_prob)
 
 def gaussian_action(phi: np.array, weights: np.array, sigma: np.array):
     mu = np.dot(phi, weights)
@@ -168,25 +219,31 @@ def reinforce(baseline="none"):
             if data["done"][t]:  # Check if the episode is done
                 cumulative_sum = 0  # Reset cumulative sum at episode end
             cumulative_sum = gamma * cumulative_sum + r[t].item()  # Ensuring r[t] is scalar
-            G[t] = cumulative_sum.item()  # Ensuring cumulative_sum is scalar
+            # print(cumulative_sum)
+            G[t] = cumulative_sum  # Ensuring cumulative_sum is scalar
         
         # Compute gradient of all samples (with/without baseline)
         dlog_pi = np.zeros((T, len(weights)))  # Initialize gradients
         for t in range(T):
             phi = data["phi"][t]  # Get feature vector
-            dlog_pi[t] = dlog_gaussian_probs(phi, weights, sigma, data["a"][t])  # Compute gradient
+            temp = dlog_gaussian_probs(phi, weights, sigma, data["a"][t])  # Compute gradient
+            dlog_pi[t] = temp.ravel()  # Flatten the (343, 1) array to (343,)
         
         # Compute gradients with returns
-        gradient = np.zeros_like(weights)
+        # gradient = np.zeros_like(weights)
+        gradient = np.zeros(weights.shape[0])  # Change gradient to be a 1D array with shape (343,)
+
         for t in range(T):
             G_t = float(G[t])  # Ensure G[t] is a scalar
-            gradient += dlog_pi[t] * G_t  # Accumulate gradient
+            temp2 = dlog_pi[t] * G_t
+            gradient += temp2  # Accumulate gradient
 
         # Average gradient over all samples
         gradient /= T
         
         # Update weights
-        weights += alpha * gradient
+        # weights += alpha * gradient
+        weights += alpha * gradient[:, np.newaxis]  # Reshape gradient to (343, 1) for updating
 
         # Update return history and total steps
         exp_return_history[tot_steps : tot_steps + T] = exp_return 
@@ -340,9 +397,9 @@ phi_dummy = get_phi(env.reset()[0])  # to get the number of features
 gamma = 0.99
 alpha = 0.1
 episodes_per_update = 10
-max_steps = 1000000  # 100000 for the Gridworld
-baselines = ["none", "mean_return", "optimal"]
-n_seeds = 10
+max_steps = 1000000 #1000000  # 100000 for the Gridworld
+baselines = ["none"] #, "mean_return", "optimal"]
+n_seeds = 1 #10
 results_exp_ret = np.zeros((
     len(baselines),
     n_seeds,
