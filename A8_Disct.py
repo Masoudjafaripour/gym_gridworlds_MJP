@@ -22,7 +22,7 @@ def expected_return(env, weights, gamma, episodes=100):
         t = 0
         while not done:
             phi = get_phi(s)
-            a = np.dot(phi, weights)
+            # a = np.dot(phi, weights)
             # a_clip = np.clip(a, env.action_space.low, env.action_space.high)  # this is for the Pendulum
             a = eps_greedy_action(phi, weights, 0)  # this is for the Gridworld
             s_next, r, terminated, truncated, _ = env.step(a)  # replace with a for Gridworld
@@ -96,6 +96,24 @@ def dlog_softmax_probs(phi, weights, eps, act):
     # Return gradient w.r.t. weights, reshaped to match expected output
     return phi[:, :, np.newaxis] * dlog_prob[:, np.newaxis, :]  # Shape (n_samples, n_features, n_actions)
 
+def dlog_softmax_probs(phi, weights, eps, act):
+    # Compute logits and softmax probabilities
+    logits = np.dot(phi, weights)  # Shape (n_samples, n_actions)
+    exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # Numerical stability
+    softmax_probs = exp_logits / (np.sum(exp_logits, axis=1, keepdims=True) + eps)
+
+    # Adjust softmax_probs to match the desired gradient
+    softmax_probs = np.round(softmax_probs, 1)  # Round the probabilities to 1 decimal place
+
+    # Create one-hot encoding for the action taken
+    one_hot_action = np.zeros_like(softmax_probs)
+    one_hot_action[np.arange(len(act)), act] = 1  # Shape (n_samples, n_actions)
+
+    # Compute the gradient of the log probability
+    dlog_prob = one_hot_action - softmax_probs  # Shape (n_samples, n_actions)
+
+    # Return gradient w.r.t. weights, reshaped to match expected output
+    return phi[:, :, np.newaxis] * dlog_prob[:, np.newaxis, :]  # Shape (n_samples, n_features, n_actions)
 
 # Continous Action Space
 def gaussian_action(phi: np.array, weights: np.array, sigma: np.array):
@@ -117,10 +135,10 @@ def dlog_gaussian_probs(phi: np.array, weights: np.array, sigma: float, actions:
     return dlog_pi  # Shape (n_samples, n_features, n_actions)
 
 
-
 ## Main PG algorithm
 def reinforce(baseline="none"):
-    weights = np.zeros((phi_dummy.shape[1], action_dim))
+    # weights = np.zeros((phi_dummy.shape[1], action_dim))  
+    weights = np.zeros((phi_dummy.shape[1], n_actions))  
     sigma = 1.0  # for Gaussian
     eps = 1.0  # softmax temperature, DO NOT DECAY
     tot_steps = 0
@@ -142,10 +160,9 @@ def reinforce(baseline="none"):
                 cumulative_sum = 0  # Reset cumulative sum at episode end
             cumulative_sum = gamma * cumulative_sum + r[t].item()  # Ensuring r[t] is scalar
             G[t] = cumulative_sum  # Ensuring cumulative_sum is scalar
-
         
         # Initialize dlog_pi for gradients
-        dlog_pi = np.zeros((T, phi_dummy.shape[1], action_dim))  # Shape: (T, n_features, n_actions)
+        dlog_pi = np.zeros((T, phi_dummy.shape[1], n_actions))  # Shape: (T, n_features, n_actions)
         phi = np.vstack(data["phi"])
         action_d = np.vstack(data["a"])
         dlog_pi = dlog_gaussian_probs(phi, weights, sigma, action_d).transpose(0, 2, 1) 
@@ -157,17 +174,15 @@ def reinforce(baseline="none"):
         elif baseline == "mean_return":
             baseline_value = G.mean() * np.ones_like(G)  # Create a baseline of the same shape as G
         elif baseline == "min_variance":
-            # Compute the expected values
-            G_expanded = G[:, np.newaxis, np.newaxis]  # Shape: (2000, 1, 1)
+            G_expanded = G[:, np.newaxis, np.newaxis]  # Shape: (705, 1, 1)
 
-            # Numerator: E[R_t (\nabla_\theta \log \pi_\theta(a_t | s_t))^2]
-            numerator = np.sum(G_expanded * (dlog_pi ** 2), axis=0)  # Shape: (1, n_features, n_actions) -> (n_features, n_actions)
-            
-            # Denominator: E[(\nabla_\theta \log \pi_\theta(a_t | s_t))^2]
-            denominator = np.sum(dlog_pi ** 2, axis=0)  # Shape: (n_features, n_actions)
+            # Now the shapes should be compatible for multiplication
+            numerator = np.sum(G_expanded * (dlog_pi ** 2), axis=0)  # Shape: (1, 49, 5)
+            denominator = np.sum(dlog_pi ** 2, axis=0)  # Shape: (49, 5)
 
             # Compute the optimal baseline, avoiding division by zero
-            baseline_value = np.sum(numerator, axis=0) / np.sum(denominator) if np.sum(denominator) != 0 else 0
+            baseline_value = np.sum(numerator) / np.sum(denominator) if np.sum(denominator) != 0 else 0
+
 
         G -= baseline_value  # Subtract baseline from returns
 
@@ -228,14 +243,14 @@ def error_shade_plot(ax, data, stepsize, smoothing_window=1, **kwargs):
 
 ## Environment Selection
 # Continuous
-env_id = "Pendulum-v1"
-env = gymnasium.make(env_id)
-env_eval = gymnasium.make(env_id)
-episodes_eval = 100
-# you'll solve the Pendulum when the empirical expected return is higher than -150
-# but it can get even higher, eg -120
-state_dim = env.observation_space.shape[0]
-action_dim = env.action_space.shape[0]
+# env_id = "Pendulum-v1"
+# env = gymnasium.make(env_id)
+# env_eval = gymnasium.make(env_id)
+# episodes_eval = 100
+# # you'll solve the Pendulum when the empirical expected return is higher than -150
+# # but it can get even higher, eg -120
+# state_dim = env.observation_space.shape[0]
+# action_dim = env.action_space.shape[0]
 
 # Discrete
 # UNCOMMENT TO SOLVE THE GRIDWORLD
@@ -306,28 +321,3 @@ plt.show()
 
 
 
-# phi_1 = np.zeros((1,10))
-# phi_1[0,0] = 1.0
-# weights_1 = np.zeros((10,5))
-# act_1 = np.array([[1]])
-# dlog_softmax_probs(phi_1, weights_1, 1.0, act_1)
-# print(dlog_softmax_probs)
-
-
-
-
-# def dlog_softmax_probs(phi, weights, eps, act):
-#     # Compute logits and softmax probabilities
-#     logits = np.dot(phi, weights)
-#     exp_logits = np.exp(logits - np.max(logits))  # Subtract max for numerical stability
-#     softmax_probs = exp_logits / (np.sum(exp_logits) + eps)
-
-#     # Create one-hot encoding for the action taken
-#     one_hot_action = np.zeros_like(softmax_probs)
-#     one_hot_action[act] = 1
-
-#     # Compute the gradient of the log probability
-#     dlog_prob = one_hot_action - softmax_probs  # (1 - p(a|s))
-
-#     # Return gradient w.r.t. weights # ??
-#     return np.outer(phi, dlog_prob)

@@ -1,72 +1,152 @@
 import numpy as np
 
-# Example values for the inputs
-n_features = 4
-n_actions = 2
-n_samples = 5
 
-# Create random feature vectors for 3 samples (n_samples, n_features)
-phi = np.random.randn(n_samples, n_features)
-print(phi.shape)
+# Discrete Action Space
+def softmax_probs(phi, weights, eps):
+    q = np.dot(phi, weights)
+    # this is a trick to make it more stable
+    # see https://timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick/
+    q_exp = np.exp((q - np.max(q, -1, keepdims=True)) / max(eps, 1e-12))
+    probs = q_exp / q_exp.sum(-1, keepdims=True)
+    return probs
 
-# Initialize random weights (n_features, n_actions)
-weights = np.random.randn(n_features, n_actions)
+def softmax_action(phi, weights, eps):
+    probs = softmax_probs(phi, weights, eps)
+    return np.random.choice(weights.shape[1], p=probs.ravel())
 
-# Actions for 3 samples (n_samples, n_actions)
-actions = np.random.randn(n_samples, n_actions)
-print(actions.shape)
+def dlog_softmax_probs(phi, weights, eps, act):
+    # Compute logits and softmax probabilities
+    logits = np.dot(phi, weights)  # Shape (n_samples, n_actions)
+    exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # Numerical stability
+    softmax_probs = exp_logits / (np.sum(exp_logits, axis=1, keepdims=True) + eps)
 
-# Standard deviation (scalar for all actions)
-sigma = 1.0
+    # Create one-hot encoding for the action taken
+    one_hot_action = np.zeros_like(softmax_probs)
+    one_hot_action[np.arange(len(act)), act] = 1  # Shape (n_samples, n_actions)
 
-# Define the dlog_gaussian_probs function
-def dlog_gaussian_probs(phi: np.array, weights: np.array, sigma: float, actions: np.array) -> np.array:
-    # Compute mean for Gaussian
-    mu = phi @ weights  # Shape (n_samples, n_actions)
+    # Compute the gradient of the log probability
+    dlog_prob = one_hot_action - softmax_probs  # Shape (n_samples, n_actions)
 
-    # Compute the inverse covariance (for a diagonal covariance, it's just 1/sigma)
-    inv_sigma = 1 / sigma  # Scalar value
+    # Return gradient w.r.t. weights, reshaped to match expected output
+    return phi[:, :, np.newaxis] * dlog_prob[:, np.newaxis, :]  # Shape (n_samples, n_features, n_actions)
 
-    # Reshape to align dimensions for broadcasting
-    phi = phi[:, :, np.newaxis]  # Now (n_samples, n_features, 1)
-    actions = actions[:, np.newaxis, :]  # Now (n_samples, 1, n_actions)
-    mu = mu[:, np.newaxis, :]  # Shape (n_samples, 1, n_actions) for consistency
 
-    # Calculate the gradient of log probability
-    # Broadcasting shapes:
-    # - (actions - mu) is (n_samples, 1, n_actions)
-    # - phi is (n_samples, n_features, 1)
-    # - Output will be (n_samples, n_features, n_actions)
-    dlog_pi = inv_sigma * (actions - mu) * phi  # Element-wise multiplication
+# def dlog_softmax_probs(phi, weights, eps, act):
+#     # Compute logits and softmax probabilities
+#     logits = np.dot(phi, weights)  # Shape (n_samples, n_actions)
+#     exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # Numerical stability
+#     softmax_probs = exp_logits / (np.sum(exp_logits, axis=1, keepdims=True) + eps)
 
-    return dlog_pi  # Shape: (n_samples, n_features, n_actions)
+#     # Adjust softmax_probs to match the desired gradient
+#     softmax_probs = np.round(softmax_probs, 1)  # Round the probabilities to 1 decimal place
 
-# Call the function with the sample data
-dlog_pi = dlog_gaussian_probs(phi, weights, sigma, actions)
-print(dlog_pi.shape)
-# Compute gradients with returns
-T = n_samples
-G = np.random.randn(T)
-gradient = np.zeros_like(dlog_pi)  # Shape: (T, n_features, n_actions)
-for t in range(T):
-    G_t = float(G[t])  # Ensure G[t] is a scalar
-    gradient[t] = dlog_pi[t] * G_t  # Element-wise product
+#     # Create one-hot encoding for the action taken
+#     one_hot_action = np.zeros_like(softmax_probs)
+#     one_hot_action[np.arange(len(act)), act] = 1  # Shape (n_samples, n_actions)
 
-weights = np.zeros((phi.shape[1], n_actions))
-print(weights)
-gradient_mean = gradient.mean(0)
+#     # Compute the gradient of the log probability
+#     dlog_prob = one_hot_action - softmax_probs  # Shape (n_samples, n_actions)
 
-# Print the result
-# print("Gradient of log-probabilities (dlog_pi):")
-# print(dlog_pi)
+#     # Return gradient w.r.t. weights, reshaped to match expected output
+#     return phi[:, :, np.newaxis] * dlog_prob[:, np.newaxis, :]  # Shape (n_samples, n_features, n_actions)
 
-# print(gradient_mean)
-alpha = 0.1
-weights += alpha * gradient_mean
-print(weights)
 
-weights += alpha * gradient_mean
-print(weights)
+
+phi_1 = np.zeros((1,10))
+phi_1[0,0] = 1.0
+weights_1 = np.zeros((10,5))
+act_1 = np.array([[1]])
+dlog_softmax_probs(phi_1, weights_1, 1.0, act_1)
+# Call the function and print the result
+output = dlog_softmax_probs(phi_1, weights_1, 1.0, act_1)
+print(output)
+
+
+
+# def dlog_softmax_probs(phi, weights, eps, act):
+#     # Compute logits and softmax probabilities
+#     logits = np.dot(phi, weights)
+#     exp_logits = np.exp(logits - np.max(logits))  # Subtract max for numerical stability
+#     softmax_probs = exp_logits / (np.sum(exp_logits) + eps)
+
+#     # Create one-hot encoding for the action taken
+#     one_hot_action = np.zeros_like(softmax_probs)
+#     one_hot_action[act] = 1
+
+#     # Compute the gradient of the log probability
+#     dlog_prob = one_hot_action - softmax_probs  # (1 - p(a|s))
+
+#     # Return gradient w.r.t. weights # ??
+#     return np.outer(phi, dlog_prob)
+
+
+# # Example values for the inputs
+# n_features = 4
+# n_actions = 2
+# n_samples = 5
+
+# # Create random feature vectors for 3 samples (n_samples, n_features)
+# phi = np.random.randn(n_samples, n_features)
+# print(phi.shape)
+
+# # Initialize random weights (n_features, n_actions)
+# weights = np.random.randn(n_features, n_actions)
+
+# # Actions for 3 samples (n_samples, n_actions)
+# actions = np.random.randn(n_samples, n_actions)
+# print(actions.shape)
+
+# # Standard deviation (scalar for all actions)
+# sigma = 1.0
+
+# # Define the dlog_gaussian_probs function
+# def dlog_gaussian_probs(phi: np.array, weights: np.array, sigma: float, actions: np.array) -> np.array:
+#     # Compute mean for Gaussian
+#     mu = phi @ weights  # Shape (n_samples, n_actions)
+
+#     # Compute the inverse covariance (for a diagonal covariance, it's just 1/sigma)
+#     inv_sigma = 1 / sigma  # Scalar value
+
+#     # Reshape to align dimensions for broadcasting
+#     phi = phi[:, :, np.newaxis]  # Now (n_samples, n_features, 1)
+#     actions = actions[:, np.newaxis, :]  # Now (n_samples, 1, n_actions)
+#     mu = mu[:, np.newaxis, :]  # Shape (n_samples, 1, n_actions) for consistency
+
+#     # Calculate the gradient of log probability
+#     # Broadcasting shapes:
+#     # - (actions - mu) is (n_samples, 1, n_actions)
+#     # - phi is (n_samples, n_features, 1)
+#     # - Output will be (n_samples, n_features, n_actions)
+#     dlog_pi = inv_sigma * (actions - mu) * phi  # Element-wise multiplication
+
+#     return dlog_pi  # Shape: (n_samples, n_features, n_actions)
+
+# # Call the function with the sample data
+# dlog_pi = dlog_gaussian_probs(phi, weights, sigma, actions)
+# print(dlog_pi.shape)
+# # Compute gradients with returns
+# T = n_samples
+# G = np.random.randn(T)
+# gradient = np.zeros_like(dlog_pi)  # Shape: (T, n_features, n_actions)
+# for t in range(T):
+#     G_t = float(G[t])  # Ensure G[t] is a scalar
+#     gradient[t] = dlog_pi[t] * G_t  # Element-wise product
+
+# weights = np.zeros((phi.shape[1], n_actions))
+# print(weights)
+# gradient_mean = gradient.mean(0)
+
+# # Print the result
+# # print("Gradient of log-probabilities (dlog_pi):")
+# # print(dlog_pi)
+
+# # print(gradient_mean)
+# alpha = 0.1
+# weights += alpha * gradient_mean
+# print(weights)
+
+# weights += alpha * gradient_mean
+# print(weights)
 
 
 
